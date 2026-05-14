@@ -82,16 +82,9 @@ export function analyzeFeedback(text: string): FeedbackIssue[] {
     while ((match = rule.pattern.exec(text)) !== null) {
       const start = match.index;
       const end = start + match[0].length;
-
-      // Expand highlight to word boundaries for context
-      const highlightStart = start;
-      const highlightEnd = end;
-
-      // Skip if overlaps with existing range
-      const overlaps = usedRanges.some(([s, e]) => highlightStart < e && highlightEnd > s);
+      const overlaps = usedRanges.some(([s, e]) => start < e && end > s);
       if (overlaps) continue;
-
-      usedRanges.push([highlightStart, highlightEnd]);
+      usedRanges.push([start, end]);
       issues.push({
         id: `${rule.id}-${start}`,
         ruleId: rule.id,
@@ -100,14 +93,81 @@ export function analyzeFeedback(text: string): FeedbackIssue[] {
         explanation: rule.explanation,
         suggestion: rule.suggestion(match[0]),
         matchedText: match[0],
-        startIndex: highlightStart,
-        endIndex: highlightEnd,
+        startIndex: start,
+        endIndex: end,
       });
     }
   }
 
   return issues.sort((a, b) => a.startIndex - b.startIndex);
 }
+
+// ─── Improved Prompt Generator ───────────────────────────────────────────────
+
+export function generateImprovedPrompt(originalPrompt: string, issues: FeedbackIssue[]): string {
+  if (!originalPrompt.trim()) return '';
+
+  let improved = originalPrompt.trim();
+
+  // 1. Prepend a role if the prompt starts with an action verb and no role is set
+  const hasRole = /^(act as|you are|as a|imagine you)/i.test(improved);
+  if (!hasRole && /^(write|create|generate|explain|describe|make|draft|summarize)/i.test(improved)) {
+    // Infer a sensible role from context
+    let role = 'an expert';
+    if (/\b(code|function|script|program|api|debug)\b/i.test(improved)) role = 'a senior software engineer';
+    else if (/\b(blog|article|post|essay|content|copy)\b/i.test(improved)) role = 'a professional content writer';
+    else if (/\b(email|message|letter|outreach)\b/i.test(improved)) role = 'an expert copywriter';
+    else if (/\b(market|brand|campaign|ad|audience)\b/i.test(improved)) role = 'a senior marketing strategist';
+    else if (/\b(data|analys|report|insight|metric)\b/i.test(improved)) role = 'a data analyst';
+    improved = `Act as ${role}. ${improved}`;
+  }
+
+  // 2. Replace vague words inline
+  const vagueMap: Record<string, string> = {
+    thing: '[specific item]',
+    stuff: '[specific material]',
+    something: '[specific subject]',
+    anything: '[specific topic]',
+    good: '[high-quality and clearly defined]',
+    great: '[outstanding by a specific metric]',
+    nice: '[polished and professional]',
+    better: '[improved in a measurable way]',
+    best: '[optimized for the stated goal]',
+    soon: '[within X days]',
+    quickly: '[in under X minutes]',
+    fast: '[within a defined timeframe]',
+    recently: '[in the past X days]',
+    'a lot': '[N items]',
+    many: '[N]',
+    some: '[specify quantity]',
+    few: '[2–3]',
+    several: '[4–6]',
+  };
+  for (const [word, replacement] of Object.entries(vagueMap)) {
+    const regex = new RegExp(`\\b${word}\\b`, 'gi');
+    improved = improved.replace(regex, replacement);
+  }
+
+  // 3. Append missing structural pieces as a structured suffix
+  const hasFormat = /\b(format|bullet|list|table|json|paragraph|numbered|structured)\b/i.test(improved);
+  const hasAudience = /\b(audience|for|beginner|expert|executive|developer|founder|customer|reader|user)\b/i.test(improved);
+  const hasTone = /\b(tone|formal|casual|professional|friendly|authoritative|conversational)\b/i.test(improved);
+  const hasLength = /\b(\d+\s*word|\d+\s*sentence|\d+\s*paragraph|\d+\s*bullet|under|limit|brief|concise|short|long)\b/i.test(improved);
+
+  const additions: string[] = [];
+  if (!hasFormat) additions.push('Format: [bullet list / numbered steps / paragraph / table — choose one].');
+  if (!hasAudience) additions.push('Audience: [describe who will read this output].');
+  if (!hasTone) additions.push('Tone: [formal / casual / authoritative / friendly].');
+  if (!hasLength) additions.push('Length: [e.g. 150 words / 5 bullet points / 3 paragraphs].');
+
+  if (additions.length > 0) {
+    improved += '\n\n' + additions.join('\n');
+  }
+
+  return improved;
+}
+
+// ─── Chat Reply Generator ─────────────────────────────────────────────────────
 
 export function generateChatReply(userMessage: string, promptContext: string): string {
   const msg = userMessage.toLowerCase();
@@ -121,13 +181,11 @@ export function generateChatReply(userMessage: string, promptContext: string): s
   }
 
   if (msg.includes('role') || msg.includes('act as') || msg.includes('persona')) {
-    return `Adding a role ("Act as a...") tells the AI what perspective and expertise level to adopt.\n\nExamples:\n- "Act as a UX researcher"
-- "Act as a senior Python developer"
-- "Act as a startup marketing expert"\n\nThis alone can significantly improve the relevance and quality of the response.`;
+    return `Adding a role ("Act as a...") tells the AI what perspective and expertise level to adopt.\n\nExamples:\n- "Act as a UX researcher"\n- "Act as a senior Python developer"\n- "Act as a startup marketing expert"\n\nThis alone can significantly improve the relevance and quality of the response.`;
   }
 
   if (msg.includes('format') || msg.includes('output') || msg.includes('structure')) {
-    return `Specifying output format is crucial. You can ask for:\n\n- **Bullet lists** – great for steps or features\n- **Tables** – good for comparisons\n- **JSON** – for structured data\n- **Paragraphs** – for narrative content\n- **Headers + sections** – for long-form content\n\nExample: "Format the output as a numbered list with a brief explanation for each item."}`;
+    return `Specifying output format is crucial. You can ask for:\n\n- **Bullet lists** – great for steps or features\n- **Tables** – good for comparisons\n- **JSON** – for structured data\n- **Paragraphs** – for narrative content\n- **Headers + sections** – for long-form content\n\nExample: "Format the output as a numbered list with a brief explanation for each item."`;
   }
 
   if (msg.includes('vague') || msg.includes('specific') || msg.includes('clear')) {

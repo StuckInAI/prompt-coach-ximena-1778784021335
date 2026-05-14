@@ -3,13 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Save, Plus, MessageSquare, X, Sparkles } from 'lucide-react';
 import styles from './EditorPage.module.css';
-import { analyzeFeedback, type FeedbackIssue } from '@/lib/feedbackEngine';
+import { analyzeFeedback, generateImprovedPrompt, type FeedbackIssue } from '@/lib/feedbackEngine';
 import { usePromptStore } from '@/hooks/usePromptStore';
 import { debounce } from '@/lib/debounce';
 import PromptEditor from '@/components/editor/PromptEditor';
 import IssuesPanel from '@/components/editor/IssuesPanel';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import TagSelector from '@/components/tags/TagSelector';
+import ImprovedPromptModal from '@/components/editor/ImprovedPromptModal';
 import type { Prompt } from '@/types';
 
 export default function EditorPage() {
@@ -26,6 +27,10 @@ export default function EditorPage() {
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
+  // Improved prompt modal state
+  const [improvedPrompt, setImprovedPrompt] = useState<string | null>(null);
+  const [showImprovedModal, setShowImprovedModal] = useState(false);
+
   // Load existing prompt
   useEffect(() => {
     if (id) {
@@ -38,7 +43,6 @@ export default function EditorPage() {
         navigate('/dashboard/editor', { replace: true });
       }
     } else {
-      // New prompt
       setContent('');
       setTitle('Untitled prompt');
       setPromptId(`prompt-${Date.now()}`);
@@ -115,6 +119,25 @@ export default function EditorPage() {
     }
   };
 
+  // ── Improve All ───────────────────────────────────────────────────────────
+  const handleImproveAll = () => {
+    if (!content.trim()) {
+      toast.error('Write a prompt first before improving it.');
+      return;
+    }
+    const improved = generateImprovedPrompt(content, issues);
+    setImprovedPrompt(improved);
+    setShowImprovedModal(true);
+  };
+
+  const handleAcceptImproved = (improved: string) => {
+    setContent(improved);
+    setIsDirty(true);
+    // Re-run analysis on the new content
+    setIsAnalyzing(true);
+    analyzeRef.current(improved);
+  };
+
   const handleNewPrompt = () => {
     navigate('/dashboard/editor');
   };
@@ -179,6 +202,7 @@ export default function EditorPage() {
             onSelectIssue={setActiveIssueId}
             onClear={() => setIssues([])}
             onApplyFix={handleApplyFix}
+            onImproveAll={handleImproveAll}
           />
         </div>
       </div>
@@ -188,6 +212,16 @@ export default function EditorPage() {
           promptId={promptId}
           promptContext={content}
           onClose={() => setChatOpen(false)}
+        />
+      )}
+
+      {showImprovedModal && improvedPrompt !== null && (
+        <ImprovedPromptModal
+          original={content}
+          improved={improvedPrompt}
+          issues={issues}
+          onAccept={handleAcceptImproved}
+          onClose={() => setShowImprovedModal(false)}
         />
       )}
     </div>

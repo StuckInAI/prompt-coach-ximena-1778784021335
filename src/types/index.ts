@@ -46,3 +46,8 @@ export interface Preferences {
   useCase: 'chatgpt' | 'system-prompt' | 'both';
   feedbackSensitivity: 'standard' | 'strict';
 }
+
+export interface ImprovedPromptResult {
+  improved: string;
+  changeCount: number;
+}

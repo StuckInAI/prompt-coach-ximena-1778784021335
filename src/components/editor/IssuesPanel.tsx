@@ -10,9 +10,10 @@ type IssuesPanelProps = {
   onSelectIssue: (id: string | null) => void;
   onClear: () => void;
   onApplyFix: (issue: FeedbackIssue) => void;
+  onImproveAll: () => void;
 };
 
-export default function IssuesPanel({ issues, activeIssueId, onSelectIssue, onClear, onApplyFix }: IssuesPanelProps) {
+export default function IssuesPanel({ issues, activeIssueId, onSelectIssue, onClear, onApplyFix, onImproveAll }: IssuesPanelProps) {
   const [open, setOpen] = useState<boolean>(true);
 
   const counts = issues.reduce<Record<IssueType, number>>(
@@ -33,12 +34,20 @@ export default function IssuesPanel({ issues, activeIssueId, onSelectIssue, onCl
           <Stat type="vague" count={counts.vague} />
           <Stat type="improvement" count={counts.improvement} />
         </div>
-        {issues.length > 0 && (
-          <button className={styles.clearBtn} onClick={onClear} title="Clear feedback">
-            <Trash2 size={13} />
-            <span>Clear</span>
-          </button>
-        )}
+        <div className={styles.headerActions}>
+          {issues.length > 0 && (
+            <button className={styles.improveAllBtn} onClick={onImproveAll} title="Generate improved prompt">
+              <Wand2 size={13} />
+              <span>Improve prompt</span>
+            </button>
+          )}
+          {issues.length > 0 && (
+            <button className={styles.clearBtn} onClick={onClear} title="Clear feedback">
+              <Trash2 size={13} />
+              <span>Clear</span>
+            </button>
+          )}
+        </div>
       </div>
       {open && (
         <div className={styles.list}>
