@@ -1,3 +1,7 @@
+export type UseCase = 'chat' | 'system' | 'both';
+
+export type Sensitivity = 'gentle' | 'standard' | 'strict';
+
 export type IssueType = 'vague' | 'missing' | 'improvement';
 
 export type FeedbackIssue = {
@@ -8,10 +12,8 @@ export type FeedbackIssue = {
   suggestion: string;
   startIndex: number;
   endIndex: number;
-  /** Optional replacement text used by 'Insert fix' on a span issue. */
-  replacement?: string;
-  /** Optional text to append to the end of the prompt for missing-context issues. */
-  appendText?: string;
+  ruleId: string;
+  matchedText: string;
 };
 
 export type Prompt = {
@@ -43,9 +45,6 @@ export type ChatMessage = {
   content: string;
   createdAt: number;
 };
-
-export type UseCase = 'work' | 'personal' | 'both';
-export type Sensitivity = 'gentle' | 'standard' | 'strict';
 
 export type Preferences = {
   useCase: UseCase;
