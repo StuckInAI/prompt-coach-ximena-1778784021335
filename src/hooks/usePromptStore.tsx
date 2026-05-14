@@ -1,187 +1,155 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { ChatMessage, Folder, Preferences, Prompt, Tag } from '@/types';
-import { loadJSON, saveJSON } from '@/lib/storage';
-import { uid } from '@/lib/id';
+import { createContext, useContext, useEffect, useReducer, ReactNode } from 'react';
 
-type StoreState = {
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+export interface Prompt {
+  id: string;
+  title: string;
+  content: string;
+  folderId: string | null;
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Preferences {
+  displayName: string;
+  useCase: 'chatgpt' | 'system-prompt' | 'both';
+  feedbackSensitivity: 'standard' | 'strict';
+}
+
+interface State {
   prompts: Prompt[];
   folders: Folder[];
   tags: Tag[];
-  chats: Record<string, ChatMessage[]>;
   preferences: Preferences;
-};
-
-type StoreContextValue = StoreState & {
-  createPrompt: (init?: Partial<Prompt>) => Prompt;
-  updatePrompt: (id: string, patch: Partial<Prompt>) => void;
-  deletePrompt: (id: string) => void;
-  getPrompt: (id: string) => Prompt | undefined;
-
-  createFolder: (name: string) => Folder;
-  renameFolder: (id: string, name: string) => void;
-  deleteFolder: (id: string) => void;
-
-  createTag: (name: string, color: string) => Tag;
-  deleteTag: (id: string) => void;
-  togglePromptTag: (promptId: string, tagId: string) => void;
-
-  addChatMessage: (promptId: string, role: 'user' | 'assistant', content: string) => ChatMessage;
-  getChat: (promptId: string) => ChatMessage[];
-  clearChat: (promptId: string) => void;
-
-  updatePreferences: (patch: Partial<Preferences>) => void;
-  resetAll: () => void;
-};
-
-const DEFAULT_PREFS: Preferences = {
-  useCase: 'both',
-  sensitivity: 'standard',
-  displayName: 'Founder',
-};
-
-const SEED_TAGS: Tag[] = [
-  { id: 'tag_marketing', name: 'Marketing', color: '#f6a93b' },
-  { id: 'tag_product', name: 'Product', color: '#7c5cff' },
-  { id: 'tag_research', name: 'Research', color: '#3ecf8e' },
-];
-
-const SEED_FOLDERS: Folder[] = [
-  { id: 'folder_drafts', name: 'Drafts', createdAt: Date.now() },
-];
-
-const StoreContext = createContext<StoreContextValue | null>(null);
-
-export function PromptStoreProvider({ children }: { children: ReactNode }) {
-  const [prompts, setPrompts] = useState<Prompt[]>(() => loadJSON<Prompt[]>('prompts', []));
-  const [folders, setFolders] = useState<Folder[]>(() => loadJSON<Folder[]>('folders', SEED_FOLDERS));
-  const [tags, setTags] = useState<Tag[]>(() => loadJSON<Tag[]>('tags', SEED_TAGS));
-  const [chats, setChats] = useState<Record<string, ChatMessage[]>>(() => loadJSON<Record<string, ChatMessage[]>>('chats', {}));
-  const [preferences, setPreferences] = useState<Preferences>(() => loadJSON<Preferences>('prefs', DEFAULT_PREFS));
-
-  useEffect(() => { saveJSON('prompts', prompts); }, [prompts]);
-  useEffect(() => { saveJSON('folders', folders); }, [folders]);
-  useEffect(() => { saveJSON('tags', tags); }, [tags]);
-  useEffect(() => { saveJSON('chats', chats); }, [chats]);
-  useEffect(() => { saveJSON('prefs', preferences); }, [preferences]);
-
-  const createPrompt = useCallback((init?: Partial<Prompt>): Prompt => {
-    const now = Date.now();
-    const p: Prompt = {
-      id: uid('prm'),
-      title: 'Untitled prompt',
-      content: '',
-      folderId: null,
-      tagIds: [],
-      createdAt: now,
-      updatedAt: now,
-      ...init,
-    };
-    setPrompts((prev) => [p, ...prev]);
-    return p;
-  }, []);
-
-  const updatePrompt = useCallback((id: string, patch: Partial<Prompt>) => {
-    setPrompts((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: Date.now() } : p)));
-  }, []);
-
-  const deletePrompt = useCallback((id: string) => {
-    setPrompts((prev) => prev.filter((p) => p.id !== id));
-    setChats((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-  }, []);
-
-  const getPrompt = useCallback((id: string) => prompts.find((p) => p.id === id), [prompts]);
-
-  const createFolder = useCallback((name: string): Folder => {
-    const f: Folder = { id: uid('fld'), name, createdAt: Date.now() };
-    setFolders((prev) => [...prev, f]);
-    return f;
-  }, []);
-
-  const renameFolder = useCallback((id: string, name: string) => {
-    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
-  }, []);
-
-  const deleteFolder = useCallback((id: string) => {
-    setFolders((prev) => prev.filter((f) => f.id !== id));
-    setPrompts((prev) => prev.map((p) => (p.folderId === id ? { ...p, folderId: null } : p)));
-  }, []);
-
-  const createTag = useCallback((name: string, color: string): Tag => {
-    const t: Tag = { id: uid('tag'), name, color };
-    setTags((prev) => [...prev, t]);
-    return t;
-  }, []);
-
-  const deleteTag = useCallback((id: string) => {
-    setTags((prev) => prev.filter((t) => t.id !== id));
-    setPrompts((prev) => prev.map((p) => ({ ...p, tagIds: p.tagIds.filter((tid) => tid !== id) })));
-  }, []);
-
-  const togglePromptTag = useCallback((promptId: string, tagId: string) => {
-    setPrompts((prev) => prev.map((p) => {
-      if (p.id !== promptId) return p;
-      const has = p.tagIds.includes(tagId);
-      return {
-        ...p,
-        tagIds: has ? p.tagIds.filter((t) => t !== tagId) : [...p.tagIds, tagId],
-        updatedAt: Date.now(),
-      };
-    }));
-  }, []);
-
-  const addChatMessage = useCallback((promptId: string, role: 'user' | 'assistant', content: string): ChatMessage => {
-    const msg: ChatMessage = { id: uid('msg'), promptId, role, content, createdAt: Date.now() };
-    setChats((prev) => ({ ...prev, [promptId]: [...(prev[promptId] ?? []), msg] }));
-    return msg;
-  }, []);
-
-  const getChat = useCallback((promptId: string) => chats[promptId] ?? [], [chats]);
-
-  const clearChat = useCallback((promptId: string) => {
-    setChats((prev) => {
-      const next = { ...prev };
-      delete next[promptId];
-      return next;
-    });
-  }, []);
-
-  const updatePreferences = useCallback((patch: Partial<Preferences>) => {
-    setPreferences((prev) => ({ ...prev, ...patch }));
-  }, []);
-
-  const resetAll = useCallback(() => {
-    setPrompts([]);
-    setFolders(SEED_FOLDERS);
-    setTags(SEED_TAGS);
-    setChats({});
-    setPreferences(DEFAULT_PREFS);
-  }, []);
-
-  const value = useMemo<StoreContextValue>(() => ({
-    prompts, folders, tags, chats, preferences,
-    createPrompt, updatePrompt, deletePrompt, getPrompt,
-    createFolder, renameFolder, deleteFolder,
-    createTag, deleteTag, togglePromptTag,
-    addChatMessage, getChat, clearChat,
-    updatePreferences, resetAll,
-  }), [
-    prompts, folders, tags, chats, preferences,
-    createPrompt, updatePrompt, deletePrompt, getPrompt,
-    createFolder, renameFolder, deleteFolder,
-    createTag, deleteTag, togglePromptTag,
-    addChatMessage, getChat, clearChat,
-    updatePreferences, resetAll,
-  ]);
-
-  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
-export function usePromptStore(): StoreContextValue {
-  const ctx = useContext(StoreContext);
+type Action =
+  | { type: 'SET_STATE'; payload: State }
+  | { type: 'UPSERT_PROMPT'; payload: Prompt }
+  | { type: 'DELETE_PROMPT'; id: string }
+  | { type: 'ADD_FOLDER'; payload: Folder }
+  | { type: 'RENAME_FOLDER'; id: string; name: string }
+  | { type: 'DELETE_FOLDER'; id: string }
+  | { type: 'ADD_TAG'; payload: Tag }
+  | { type: 'DELETE_TAG'; id: string }
+  | { type: 'SET_PREFERENCES'; payload: Partial<Preferences> };
+
+const defaultState: State = {
+  prompts: [],
+  folders: [],
+  tags: [
+    { id: 'tag-1', name: 'Marketing', color: '#f6a93b' },
+    { id: 'tag-2', name: 'Dev', color: '#3b82f6' },
+    { id: 'tag-3', name: 'Writing', color: '#3ecf8e' },
+  ],
+  preferences: {
+    displayName: 'User',
+    useCase: 'chatgpt',
+    feedbackSensitivity: 'standard',
+  },
+};
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'SET_STATE': return action.payload;
+    case 'UPSERT_PROMPT': {
+      const idx = state.prompts.findIndex((p) => p.id === action.payload.id);
+      const prompts = idx >= 0
+        ? state.prompts.map((p, i) => (i === idx ? action.payload : p))
+        : [action.payload, ...state.prompts];
+      return { ...state, prompts };
+    }
+    case 'DELETE_PROMPT':
+      return { ...state, prompts: state.prompts.filter((p) => p.id !== action.id) };
+    case 'ADD_FOLDER':
+      return { ...state, folders: [...state.folders, action.payload] };
+    case 'RENAME_FOLDER':
+      return { ...state, folders: state.folders.map((f) => f.id === action.id ? { ...f, name: action.name } : f) };
+    case 'DELETE_FOLDER':
+      return {
+        ...state,
+        folders: state.folders.filter((f) => f.id !== action.id),
+        prompts: state.prompts.map((p) => p.folderId === action.id ? { ...p, folderId: null } : p),
+      };
+    case 'ADD_TAG':
+      return { ...state, tags: [...state.tags, action.payload] };
+    case 'DELETE_TAG':
+      return {
+        ...state,
+        tags: state.tags.filter((t) => t.id !== action.id),
+        prompts: state.prompts.map((p) => ({ ...p, tags: p.tags.filter((t) => t !== action.id) })),
+      };
+    case 'SET_PREFERENCES':
+      return { ...state, preferences: { ...state.preferences, ...action.payload } };
+    default: return state;
+  }
+}
+
+interface ContextValue extends State {
+  upsertPrompt: (p: Prompt) => void;
+  deletePrompt: (id: string) => void;
+  addFolder: (name: string) => Folder;
+  renameFolder: (id: string, name: string) => void;
+  deleteFolder: (id: string) => void;
+  addTag: (name: string, color: string) => Tag;
+  deleteTag: (id: string) => void;
+  setPreferences: (p: Partial<Preferences>) => void;
+}
+
+const Ctx = createContext<ContextValue | null>(null);
+
+export function PromptStoreProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(reducer, defaultState);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('promptcoach-store');
+      if (raw) dispatch({ type: 'SET_STATE', payload: JSON.parse(raw) });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('promptcoach-store', JSON.stringify(state));
+  }, [state]);
+
+  const upsertPrompt = (p: Prompt) => dispatch({ type: 'UPSERT_PROMPT', payload: p });
+  const deletePrompt = (id: string) => dispatch({ type: 'DELETE_PROMPT', id });
+  const addFolder = (name: string): Folder => {
+    const f: Folder = { id: `folder-${Date.now()}`, name, createdAt: Date.now() };
+    dispatch({ type: 'ADD_FOLDER', payload: f });
+    return f;
+  };
+  const renameFolder = (id: string, name: string) => dispatch({ type: 'RENAME_FOLDER', id, name });
+  const deleteFolder = (id: string) => dispatch({ type: 'DELETE_FOLDER', id });
+  const addTag = (name: string, color: string): Tag => {
+    const t: Tag = { id: `tag-${Date.now()}`, name, color };
+    dispatch({ type: 'ADD_TAG', payload: t });
+    return t;
+  };
+  const deleteTag = (id: string) => dispatch({ type: 'DELETE_TAG', id });
+  const setPreferences = (p: Partial<Preferences>) => dispatch({ type: 'SET_PREFERENCES', payload: p });
+
+  return (
+    <Ctx.Provider value={{ ...state, upsertPrompt, deletePrompt, addFolder, renameFolder, deleteFolder, addTag, deleteTag, setPreferences }}>
+      {children}
+    </Ctx.Provider>
+  );
+}
+
+export function usePromptStore() {
+  const ctx = useContext(Ctx);
   if (!ctx) throw new Error('usePromptStore must be used within PromptStoreProvider');
   return ctx;
 }

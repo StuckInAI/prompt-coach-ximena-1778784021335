@@ -1,43 +1,41 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { loadJSON, saveJSON } from '@/lib/storage';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-type OnboardingContextValue = {
+interface OnboardingCtx {
   open: boolean;
-  step: number;
-  setStep: (n: number) => void;
-  close: () => void;
+  completed: boolean;
   reopen: () => void;
-};
+  complete: () => void;
+}
 
-const OnboardingContext = createContext<OnboardingContextValue | null>(null);
+const Ctx = createContext<OnboardingCtx | null>(null);
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
+  const [completed, setCompleted] = useState<boolean>(false);
   const [open, setOpen] = useState<boolean>(false);
-  const [step, setStep] = useState<number>(0);
 
   useEffect(() => {
-    const done = loadJSON<boolean>('onboarding_done', false);
+    const done = localStorage.getItem('promptcoach-onboarding') === 'done';
+    setCompleted(done);
     if (!done) setOpen(true);
   }, []);
 
-  const close = () => {
-    saveJSON('onboarding_done', true);
+  const complete = () => {
+    localStorage.setItem('promptcoach-onboarding', 'done');
+    setCompleted(true);
     setOpen(false);
   };
-  const reopen = () => {
-    setStep(0);
-    setOpen(true);
-  };
+
+  const reopen = () => setOpen(true);
 
   return (
-    <OnboardingContext.Provider value={{ open, step, setStep, close, reopen }}>
+    <Ctx.Provider value={{ open, completed, reopen, complete }}>
       {children}
-    </OnboardingContext.Provider>
+    </Ctx.Provider>
   );
 }
 
-export function useOnboarding(): OnboardingContextValue {
-  const ctx = useContext(OnboardingContext);
+export function useOnboarding() {
+  const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useOnboarding must be used within OnboardingProvider');
   return ctx;
 }

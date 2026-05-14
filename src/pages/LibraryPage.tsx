@@ -1,183 +1,188 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Plus, Search, Trash2, Tag as TagIcon } from 'lucide-react';
-import { toast } from 'sonner';
+import { Plus, Folder, FolderOpen, Trash2, Edit2, Check, X, FileText, Tag as TagIcon, Search } from 'lucide-react';
 import { usePromptStore } from '@/hooks/usePromptStore';
+import type { Prompt } from '@/hooks/usePromptStore';
+import { toast } from 'sonner';
+import styles from './LibraryPage.module.css';
 
 export default function LibraryPage() {
-  const store = usePromptStore();
   const navigate = useNavigate();
-  const [query, setQuery] = useState<string>('');
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const { prompts, folders, tags, addFolder, renameFolder, deleteFolder, deletePrompt } = usePromptStore();
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [editingFolder, setEditingFolder] = useState<string | null>(null);
+  const [folderName, setFolderName] = useState('');
+  const [search, setSearch] = useState('');
+  const [filterTag, setFilterTag] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return store.prompts.filter((p) => {
-      if (activeTag && !p.tagIds.includes(activeTag)) return false;
-      if (!q) return true;
-      return (
-        p.title.toLowerCase().includes(q) ||
-        p.content.toLowerCase().includes(q)
-      );
-    });
-  }, [store.prompts, query, activeTag]);
-
-  const handleCreate = () => {
-    const p = store.createPrompt();
-    navigate(`/dashboard/editor/${p.id}`);
+  const handleAddFolder = () => {
+    const f = addFolder('New Folder');
+    setEditingFolder(f.id);
+    setFolderName(f.name);
   };
 
-  const handleDelete = (id: string, title: string) => {
-    store.deletePrompt(id);
-    toast.success(`Deleted "${title}"`);
+  const handleRenameCommit = (id: string) => {
+    if (folderName.trim()) renameFolder(id, folderName.trim());
+    setEditingFolder(null);
   };
+
+  const handleDeleteFolder = (id: string) => {
+    deleteFolder(id);
+    if (selectedFolder === id) setSelectedFolder(null);
+    toast.success('Folder deleted');
+  };
+
+  const filtered = prompts.filter((p) => {
+    if (selectedFolder !== null && p.folderId !== selectedFolder) return false;
+    if (filterTag && !p.tags.includes(filterTag)) return false;
+    if (search && !p.title.toLowerCase().includes(search.toLowerCase()) && !p.content.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   return (
-    <div style={{ padding: '24px 32px', height: '100%', overflow: 'auto' }}>
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Library</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13.5, margin: '4px 0 0' }}>
-            All your saved prompts in one place.
-          </p>
-        </div>
-        <button
-          onClick={handleCreate}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            background: 'var(--accent)', color: 'white',
-            border: 0, borderRadius: 8, padding: '8px 14px',
-            fontSize: 13, fontWeight: 500, cursor: 'pointer',
-          }}
-        >
-          <Plus size={14} /> New prompt
-        </button>
-      </header>
-
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          background: 'var(--bg-elev)', border: '1px solid var(--border)',
-          borderRadius: 8, padding: '7px 12px', flex: 1, minWidth: 260,
-        }}>
-          <Search size={14} color="var(--text-dim)" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search prompts…"
-            style={{
-              background: 'transparent', border: 0, outline: 'none',
-              color: 'var(--text)', fontSize: 13.5, flex: 1,
-            }}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button
-            onClick={() => setActiveTag(null)}
-            style={{
-              background: activeTag === null ? 'var(--accent-soft)' : 'transparent',
-              color: activeTag === null ? '#c4b1ff' : 'var(--text-muted)',
-              border: '1px solid var(--border)', borderRadius: 999,
-              padding: '5px 11px', fontSize: 12, cursor: 'pointer',
-            }}
-          >
-            All
+    <div className={styles.page}>
+      {/* Folder sidebar */}
+      <aside className={styles.folderPanel}>
+        <div className={styles.folderHeader}>
+          <span className={styles.folderHeaderTitle}>Folders</span>
+          <button className={styles.addFolderBtn} onClick={handleAddFolder} title="New folder">
+            <Plus size={14} />
           </button>
-          {store.tags.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTag(activeTag === t.id ? null : t.id)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                background: activeTag === t.id ? 'var(--accent-soft)' : 'transparent',
-                color: activeTag === t.id ? '#c4b1ff' : 'var(--text-muted)',
-                border: '1px solid var(--border)', borderRadius: 999,
-                padding: '5px 11px', fontSize: 12, cursor: 'pointer',
-              }}
-            >
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.color }} />
-              {t.name}
-            </button>
+        </div>
+        <div className={styles.folderList}>
+          <button
+            className={`${styles.folderItem} ${selectedFolder === null ? styles.folderItemActive : ''}`}
+            onClick={() => setSelectedFolder(null)}
+          >
+            <FolderOpen size={14} />
+            <span>All prompts</span>
+            <span className={styles.folderCount}>{prompts.length}</span>
+          </button>
+          {folders.map((f) => (
+            <div key={f.id} className={`${styles.folderItem} ${selectedFolder === f.id ? styles.folderItemActive : ''}`}>
+              {editingFolder === f.id ? (
+                <>
+                  <input
+                    autoFocus
+                    className={styles.folderInput}
+                    value={folderName}
+                    onChange={(e) => setFolderName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRenameCommit(f.id);
+                      if (e.key === 'Escape') setEditingFolder(null);
+                    }}
+                  />
+                  <button className={styles.folderAction} onClick={() => handleRenameCommit(f.id)}><Check size={12} /></button>
+                  <button className={styles.folderAction} onClick={() => setEditingFolder(null)}><X size={12} /></button>
+                </>
+              ) : (
+                <>
+                  <button className={styles.folderBtn} onClick={() => setSelectedFolder(f.id)}>
+                    <Folder size={14} />
+                    <span>{f.name}</span>
+                    <span className={styles.folderCount}>{prompts.filter((p) => p.folderId === f.id).length}</span>
+                  </button>
+                  <button className={styles.folderAction} onClick={() => { setEditingFolder(f.id); setFolderName(f.name); }}><Edit2 size={11} /></button>
+                  <button className={styles.folderAction} onClick={() => handleDeleteFolder(f.id)}><Trash2 size={11} /></button>
+                </>
+              )}
+            </div>
           ))}
         </div>
-      </div>
+      </aside>
 
-      {filtered.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: '60px 20px',
-          background: 'var(--bg-elev)', border: '1px dashed var(--border)',
-          borderRadius: 12, color: 'var(--text-muted)',
-        }}>
-          <FileText size={28} />
-          <div style={{ fontWeight: 600, color: 'var(--text)', marginTop: 10 }}>
-            {store.prompts.length === 0 ? 'No prompts yet' : 'No prompts match'}
+      {/* Main area */}
+      <div className={styles.main}>
+        {/* Controls */}
+        <div className={styles.controls}>
+          <div className={styles.searchWrap}>
+            <Search size={14} className={styles.searchIcon} />
+            <input
+              className={styles.search}
+              placeholder="Search prompts…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>
-            {store.prompts.length === 0
-              ? 'Create your first prompt to get started.'
-              : 'Try a different search or tag filter.'}
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-          {filtered.map((p) => {
-            const promptTags = store.tags.filter((t) => p.tagIds.includes(t.id));
-            return (
-              <div
-                key={p.id}
-                style={{
-                  background: 'var(--bg-elev)', border: '1px solid var(--border)',
-                  borderRadius: 10, padding: 14, cursor: 'pointer',
-                  display: 'flex', flexDirection: 'column', gap: 8,
-                  transition: 'border-color 0.12s',
-                }}
-                onClick={() => navigate(`/dashboard/editor/${p.id}`)}
+          <div className={styles.tagFilters}>
+            <button
+              className={`${styles.tagChip} ${filterTag === null ? styles.tagChipActive : ''}`}
+              onClick={() => setFilterTag(null)}
+            >All</button>
+            {tags.map((t) => (
+              <button
+                key={t.id}
+                className={`${styles.tagChip} ${filterTag === t.id ? styles.tagChipActive : ''}`}
+                style={filterTag === t.id ? { background: t.color + '33', borderColor: t.color, color: t.color } : {}}
+                onClick={() => setFilterTag(filterTag === t.id ? null : t.id)}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.title || 'Untitled prompt'}
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.title); }}
-                    style={{
-                      background: 'transparent', border: 0, color: 'var(--text-dim)',
-                      cursor: 'pointer', padding: 2,
-                    }}
-                    title="Delete"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-                <div style={{
-                  fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5,
-                  display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                }}>
-                  {p.content || <em style={{ color: 'var(--text-dim)' }}>Empty prompt</em>}
-                </div>
-                {promptTags.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {promptTags.map((t) => (
-                      <span key={t.id} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        fontSize: 10.5, padding: '2px 7px', borderRadius: 999,
-                        background: 'var(--bg)', border: '1px solid var(--border)',
-                        color: 'var(--text-muted)',
-                      }}>
-                        <TagIcon size={9} color={t.color} />
-                        {t.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 'auto' }}>
-                  Updated {new Date(p.updatedAt).toLocaleDateString()}
-                </div>
-              </div>
-            );
-          })}
+                <TagIcon size={11} /> {t.name}
+              </button>
+            ))}
+          </div>
+          <button className={styles.newPromptBtn} onClick={() => navigate('/dashboard/editor')}>
+            <Plus size={14} /> New prompt
+          </button>
         </div>
-      )}
+
+        {/* Prompt grid */}
+        {filtered.length === 0 ? (
+          <div className={styles.empty}>
+            <FileText size={32} />
+            <p>{prompts.length === 0 ? "No prompts yet. Create your first one in the Editor!" : "No prompts match your filters."}</p>
+            <button className={styles.newPromptBtn} onClick={() => navigate('/dashboard/editor')}>
+              <Plus size={14} /> New prompt
+            </button>
+          </div>
+        ) : (
+          <div className={styles.grid}>
+            {filtered.map((p) => (
+              <PromptCard
+                key={p.id}
+                prompt={p}
+                tags={tags}
+                onOpen={() => navigate(`/dashboard/editor/${p.id}`)}
+                onDelete={() => { deletePrompt(p.id); toast.success('Prompt deleted'); }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PromptCard({
+  prompt, tags, onOpen, onDelete,
+}: {
+  prompt: Prompt;
+  tags: { id: string; name: string; color: string }[];
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const excerpt = prompt.content.slice(0, 120) + (prompt.content.length > 120 ? '…' : '');
+  const promptTags = tags.filter((t) => prompt.tags.includes(t.id));
+  const date = new Date(prompt.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+  return (
+    <div className={styles.card}>
+      <div className={styles.cardMain} onClick={onOpen}>
+        <div className={styles.cardTitle}>{prompt.title || 'Untitled'}</div>
+        <div className={styles.cardExcerpt}>{excerpt || <em>Empty prompt</em>}</div>
+        {promptTags.length > 0 && (
+          <div className={styles.cardTags}>
+            {promptTags.map((t) => (
+              <span key={t.id} className={styles.cardTag} style={{ background: t.color + '22', color: t.color, borderColor: t.color + '55' }}>
+                {t.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className={styles.cardFoot}>
+        <span className={styles.cardDate}>{date}</span>
+        <button className={styles.deleteBtn} onClick={onDelete} title="Delete"><Trash2 size={13} /></button>
+      </div>
     </div>
   );
 }
