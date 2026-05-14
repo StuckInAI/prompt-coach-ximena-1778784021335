@@ -1,3 +1,3 @@
-export function uid(prefix: string = 'id'): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+export function nanoid(): string {
+  return Math.random().toString(36).slice(2, 11) + Math.random().toString(36).slice(2, 11);
 }

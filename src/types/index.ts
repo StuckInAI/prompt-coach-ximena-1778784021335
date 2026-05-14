@@ -1,8 +1,6 @@
-export type UseCase = 'chat' | 'system' | 'both';
-export type Sensitivity = 'lenient' | 'standard' | 'strict';
 export type IssueType = 'vague' | 'missing' | 'improvement';
 
-export type FeedbackIssue = {
+export interface FeedbackIssue {
   id: string;
   ruleId: string;
   type: IssueType;
@@ -12,49 +10,39 @@ export type FeedbackIssue = {
   matchedText: string;
   startIndex: number;
   endIndex: number;
-};
+}
 
-export type Prompt = {
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+export interface Prompt {
   id: string;
   title: string;
   content: string;
   folderId: string | null;
-  tagIds: string[];
+  tags: string[];
   createdAt: number;
   updatedAt: number;
-};
+}
 
-export type Folder = {
-  id: string;
-  name: string;
-  createdAt: number;
-};
-
-export type Tag = {
-  id: string;
-  name: string;
-  color: string;
-};
-
-export type ChatMessage = {
-  id: string;
-  promptId: string;
-  role: 'user' | 'assistant';
-  content: string;
-  createdAt: number;
-};
-
-export type Preferences = {
-  useCase: UseCase;
-  sensitivity: Sensitivity;
+export interface Preferences {
   displayName: string;
-};
-
-export type FeedbackRule = {
-  id: string;
-  type: IssueType;
-  shortLabel: string;
-  explanation: string;
-  suggestion: string;
-  appliesTo: UseCase[];
-};
+  useCase: 'chatgpt' | 'system-prompt' | 'both';
+  feedbackSensitivity: 'standard' | 'strict';
+}

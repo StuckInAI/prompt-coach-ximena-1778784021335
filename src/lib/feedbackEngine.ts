@@ -1,191 +1,162 @@
 import type { FeedbackIssue, IssueType } from '@/types';
 
+export type { FeedbackIssue, IssueType };
+
 export interface FeedbackRule {
   id: string;
   type: IssueType;
+  pattern: RegExp;
   shortLabel: string;
-  detect: (text: string) => { start: number; end: number } | null;
   explanation: string;
   suggestion: string;
-}
-
-function findPhrase(text: string, phrase: string): { start: number; end: number } | null {
-  const lower = text.toLowerCase();
-  const idx = lower.indexOf(phrase.toLowerCase());
-  if (idx === -1) return null;
-  return { start: idx, end: idx + phrase.length };
-}
-
-function findPattern(text: string, pattern: RegExp): { start: number; end: number } | null {
-  const m = pattern.exec(text);
-  if (!m) return null;
-  return { start: m.index, end: m.index + m[0].length };
 }
 
 const rules: FeedbackRule[] = [
   {
     id: 'vague-thing',
     type: 'vague',
-    shortLabel: 'Vague subject',
-    detect: (t) => findPattern(t, /\b(thing|stuff|it|this|that)\b/i),
-    explanation: 'Using generic words like "thing" or "stuff" makes your prompt ambiguous. Specify exactly what you mean.',
-    suggestion: 'Replace with a concrete noun (e.g., "the API response", "the report", "the dataset").',
+    pattern: /\bthing(s)?\b/gi,
+    shortLabel: 'Vague noun',
+    explanation: '"Thing" is very non-specific. Replace it with the actual object or concept you mean.',
+    suggestion: 'Replace "thing" with a specific noun (e.g., "feature", "document", "idea").',
   },
   {
-    id: 'missing-role',
-    type: 'missing',
-    shortLabel: 'No role specified',
-    detect: (t) => {
-      const hasRole = /\b(you are|act as|as a|role:|persona:)\b/i.test(t);
-      if (hasRole) return null;
-      if (t.length < 30) return null;
-      return { start: 0, end: Math.min(20, t.length) };
-    },
-    explanation: 'Assigning a role (e.g., "You are an expert copywriter") anchors the model behaviour and tone.',
-    suggestion: 'Add a role at the beginning: "You are a [role]. [rest of prompt]"',
+    id: 'vague-stuff',
+    type: 'vague',
+    pattern: /\bstuff\b/gi,
+    shortLabel: 'Vague word',
+    explanation: '"Stuff" is informal and vague. Be specific about what you\'re referring to.',
+    suggestion: 'Replace "stuff" with a concrete description of what you mean.',
+  },
+  {
+    id: 'vague-some',
+    type: 'vague',
+    pattern: /\bsome\s+(information|details?|data|content|text)\b/gi,
+    shortLabel: 'Unquantified request',
+    explanation: 'Asking for "some" information is vague. Specify how much or what kind.',
+    suggestion: 'Specify quantity or type, e.g., "three key points" or "a detailed breakdown".',
+  },
+  {
+    id: 'vague-good',
+    type: 'vague',
+    pattern: /\b(good|nice|great|awesome|amazing)\b/gi,
+    shortLabel: 'Subjective adjective',
+    explanation: 'Subjective adjectives like "good" or "great" don\'t give the AI measurable criteria.',
+    suggestion: 'Define what "good" means: e.g., "clear and concise", "persuasive", "technically accurate".',
   },
   {
     id: 'missing-format',
-    type: 'improvement',
-    shortLabel: 'No output format',
-    detect: (t) => {
-      const hasFormat = /\b(json|markdown|bullet|list|table|format|structure|output|respond in|write in)\b/i.test(t);
-      if (hasFormat) return null;
-      if (t.length < 60) return null;
-      const last = t.slice(-40);
-      return { start: t.length - last.length, end: t.length };
-    },
-    explanation: 'Without an output format, the model may produce an inconsistent structure.',
-    suggestion: 'Specify the format: "Respond in JSON", "Use a numbered list", or "Write in Markdown with headers".',
-  },
-  {
-    id: 'vague-audience',
-    type: 'vague',
-    shortLabel: 'Vague audience',
-    detect: (t) => findPattern(t, /\b(audience|reader|user|people|someone|they)\b/i),
-    explanation: '"Audience" or "people" is too vague. Define who will read or use the output.',
-    suggestion: 'Be specific: "senior software engineers", "non-technical stakeholders", "B2B SaaS founders".',
-  },
-  {
-    id: 'missing-context',
     type: 'missing',
-    shortLabel: 'No context provided',
-    detect: (t) => {
-      if (t.length > 120) return null;
-      if (t.length < 20) return null;
-      const hasContext = /\b(context|background|given|based on|our|we|company|product)\b/i.test(t);
-      if (hasContext) return null;
-      return { start: 0, end: Math.min(t.length, 40) };
-    },
-    explanation: 'Short prompts often lack context. What is the situation, product, or data the model should know about?',
-    suggestion: 'Add a context sentence: "We are a [type] company that [does X]. Given [context], ..."',
+    pattern: /\b(write|create|generate|produce|make)\b(?!.*\b(list|bullet|paragraph|table|json|markdown|format|outline|essay|email|report)\b)/gi,
+    shortLabel: 'No output format',
+    explanation: 'You haven\'t specified an output format. The AI may guess incorrectly.',
+    suggestion: 'Add a format: e.g., "as a bullet list", "in JSON", "as a short paragraph".',
   },
   {
-    id: 'vague-length',
-    type: 'improvement',
-    shortLabel: 'No length constraint',
-    detect: (t) => {
-      if (t.length < 80) return null;
-      const hasLength = /\b(\d+\s*(word|sentence|paragraph|line|char)|brief|concise|short|long|detailed|comprehensive)\b/i.test(t);
-      if (hasLength) return null;
-      return findPattern(t, /\b(write|generate|create|produce|draft)\b/i);
-    },
-    explanation: 'Without a length constraint, outputs vary wildly in size.',
-    suggestion: 'Add a length: "in 2-3 sentences", "under 200 words", or "a comprehensive 5-paragraph essay".',
-  },
-  {
-    id: 'vague-verb',
-    type: 'vague',
-    shortLabel: 'Weak action verb',
-    detect: (t) => findPattern(t, /^(help|do|make|handle|deal with|work on|look at|check)/i),
-    explanation: 'Starting with a weak verb like "help" or "do" gives the model little direction.',
-    suggestion: 'Use a precise verb: "Summarize", "Classify", "Compare", "Rewrite", "Extract", "Explain".',
+    id: 'missing-audience',
+    type: 'missing',
+    pattern: /\b(explain|describe|summarize|teach)\b(?!.*\b(audience|reader|beginner|expert|child|professional|developer|manager)\b)/gi,
+    shortLabel: 'No target audience',
+    explanation: 'Without specifying the audience, the AI can\'t calibrate vocabulary or depth.',
+    suggestion: 'Add audience context: e.g., "for a non-technical manager" or "for an experienced developer".',
   },
   {
     id: 'missing-tone',
-    type: 'improvement',
+    type: 'missing',
+    pattern: /\b(write|draft|compose)\b(?!.*\b(tone|formal|informal|casual|professional|friendly|serious|humorous|neutral)\b)/gi,
     shortLabel: 'No tone specified',
-    detect: (t) => {
-      if (t.length < 100) return null;
-      const hasTone = /\b(tone|formal|informal|professional|friendly|casual|technical|simple|academic|persuasive|neutral)\b/i.test(t);
-      if (hasTone) return null;
-      return findPhrase(t, t.split(' ').slice(0, 5).join(' '));
-    },
-    explanation: 'Without a specified tone, the model defaults to a generic style that may not match your needs.',
-    suggestion: 'Add tone guidance: "Use a professional tone", "Write conversationally", or "Keep it technical".',
+    explanation: 'No tone has been indicated, leaving the style open to interpretation.',
+    suggestion: 'Specify tone: e.g., "in a professional tone" or "casual and friendly".',
+  },
+  {
+    id: 'improvement-role',
+    type: 'improvement',
+    pattern: /^(?!.*\b(you are|act as|as a|imagine you|pretend|your role)\b)/i,
+    shortLabel: 'Add a role',
+    explanation: 'Assigning a role to the AI (e.g., "You are an expert copywriter") often improves output quality.',
+    suggestion: 'Start with: "You are a [role]. " to frame the AI\'s perspective.',
+  },
+  {
+    id: 'improvement-context',
+    type: 'improvement',
+    pattern: /^(?!.*\b(context|background|given that|assuming|note that|the goal is)\b)/i,
+    shortLabel: 'Add context',
+    explanation: 'Providing background context helps the AI understand the situation better.',
+    suggestion: 'Add a context sentence: e.g., "The goal is to..." or "This is for...".',
   },
 ];
 
-export function analyzePrompt(text: string, sensitivity: 'standard' | 'strict' = 'standard'): FeedbackIssue[] {
-  if (!text.trim()) return [];
-  const issues: FeedbackIssue[] = [];
-  const used = new Set<string>();
-
-  for (const rule of rules) {
-    const match = rule.detect(text);
-    if (!match) continue;
-
-    // Avoid duplicate overlapping highlights
-    const key = `${match.start}-${match.end}`;
-    if (used.has(key)) continue;
-    used.add(key);
-
-    // In standard mode skip minor improvement hints for short prompts
-    if (sensitivity === 'standard' && rule.type === 'improvement' && text.length < 50) continue;
-
-    issues.push({
-      id: `${rule.id}-${match.start}`,
-      type: rule.type,
-      shortLabel: rule.shortLabel,
-      explanation: rule.explanation,
-      suggestion: rule.suggestion,
-      startIndex: match.start,
-      endIndex: match.end,
-    });
-  }
-
-  return issues;
+interface MatchResult {
+  start: number;
+  end: number;
 }
 
-// ── Chat reply generator ──────────────────────────────────────────────────────
-const chatReplies: Array<{ match: (q: string) => boolean; reply: () => string }> = [
-  {
-    match: (q) => /role|persona|act as/i.test(q),
-    reply: () =>
-      'Roles anchor the model behaviour. Try starting with "You are an expert [X] with [Y] years of experience in [Z]." This dramatically narrows the response style.',
-  },
-  {
-    match: (q) => /format|json|markdown|structure/i.test(q),
-    reply: () =>
-      'Output format tips:\n\u2022 "Respond in JSON with keys: title, summary, tags"\n\u2022 "Use a numbered list"\n\u2022 "Write in Markdown with headers"',
-  },
-  {
-    match: (q) => /vague|specific|clear/i.test(q),
-    reply: () =>
-      'Vagueness is the #1 prompt problem. Replace generic nouns ("thing", "it", "stuff") with precise terms. Specify the audience, scope, and desired depth.',
-  },
-  {
-    match: (q) => /context|background/i.test(q),
-    reply: () =>
-      'Context frames everything. Add a sentence like: "We are a B2B SaaS startup. Our users are CTOs of mid-size companies." The more relevant background, the better the output.',
-  },
-  {
-    match: (q) => /length|word|sentence|short|long/i.test(q),
-    reply: () =>
-      'Length constraints prevent bloat or underdelivery. Use: "in exactly 3 bullet points", "under 150 words", or "a 5-paragraph structured essay".',
-  },
-];
-
-const fallbackReplies = [
-  'Great question! The key to a strong prompt is specificity: role, context, format, and length. Try adding one of those to your current prompt.',
-  'Think of your prompt as a brief to a contractor. The more precisely you describe the output, the closer the first draft will be to what you need.',
-  'One quick win: add an output format instruction at the end of your prompt. Even "Respond as a numbered list" dramatically improves usability.',
-  'Try the RCTF framework: Role, Context, Task, Format. Cover all four and your prompts will be consistently strong.',
-];
-
-export function generateChatReply(userMessage: string, _promptContext: string): string {
-  for (const handler of chatReplies) {
-    if (handler.match(userMessage)) return handler.reply();
+function findMatches(text: string, pattern: RegExp): MatchResult[] {
+  const results: MatchResult[] = [];
+  const re = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    results.push({ start: m.index, end: m.index + m[0].length });
+    if (!pattern.flags.includes('g')) break;
   }
-  return fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)];
+  return results;
+}
+
+export function analyzeFeedback(text: string): FeedbackIssue[] {
+  if (!text.trim()) return [];
+  const issues: FeedbackIssue[] = [];
+  const seen = new Set<string>();
+
+  for (const rule of rules) {
+    const matches = findMatches(text, rule.pattern);
+    for (const match of matches) {
+      const key = `${rule.id}-${match.start}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      issues.push({
+        id: key,
+        ruleId: rule.id,
+        type: rule.type,
+        shortLabel: rule.shortLabel,
+        explanation: rule.explanation,
+        suggestion: rule.suggestion,
+        matchedText: text.slice(match.start, match.end),
+        startIndex: match.start,
+        endIndex: match.end,
+      });
+    }
+  }
+
+  // Limit to 8 issues max to avoid overwhelming
+  return issues.slice(0, 8);
+}
+
+export function generateChatReply(userMessage: string, promptContext: string): string {
+  const msg = userMessage.toLowerCase();
+
+  if (msg.includes('improve') || msg.includes('better') || msg.includes('fix')) {
+    return `To improve your prompt, consider these steps:\n\n1. **Add a role** – Start with "You are a [expert]..." to frame the AI's expertise.\n2. **Specify format** – Tell the AI exactly how to structure the output (list, JSON, paragraph).\n3. **Define the audience** – Who is this for? A beginner? An expert?\n4. **Set constraints** – Word count, tone, style.\n\nWould you like me to rewrite your prompt with these improvements?`;
+  }
+
+  if (msg.includes('example') || msg.includes('sample') || msg.includes('show me')) {
+    return `Here's an improved version of a typical prompt:\n\n**Before:** Write a blog post about AI.\n\n**After:** You are an experienced tech writer. Write a 500-word blog post about how AI is changing software development, targeting mid-level developers. Use a conversational tone with 3 subheadings and a short conclusion.\n\nNotice how the improved version adds role, audience, format, length, and tone.`;
+  }
+
+  if (msg.includes('role') || msg.includes('persona')) {
+    return `Assigning a **role** is one of the most effective prompt techniques.\n\nExamples:\n• "You are a senior software engineer..."\n• "Act as a marketing strategist..."\n• "Imagine you are a Socratic tutor..."\n\nThis primes the AI to respond from a specific perspective, vocabulary, and knowledge base.`;
+  }
+
+  if (msg.includes('format') || msg.includes('output') || msg.includes('structure')) {
+    return `Specifying **output format** removes ambiguity:\n\n• "Respond in JSON with keys: title, summary, tags"\n• "Use a numbered list"\n• "Write 3 short paragraphs"\n• "Provide a markdown table"\n\nWithout format instructions, the AI may choose a structure that doesn't fit your use case.`;
+  }
+
+  if (msg.includes('tone') || msg.includes('style') || msg.includes('voice')) {
+    return `**Tone** words to use in your prompt:\n\n• Professional / Formal\n• Casual / Conversational\n• Persuasive / Sales-focused\n• Empathetic / Supportive\n• Technical / Precise\n• Creative / Imaginative\n\nExample: "Write in a friendly, casual tone suitable for a newsletter."\`;
+  }
+
+  if (promptContext && promptContext.length > 10) {
+    return `Looking at your current prompt, here are some quick wins:\n\n${promptContext.length < 80 ? '• Your prompt is quite short. Add more context about the desired outcome.\n' : ''}${!promptContext.toLowerCase().includes('you are') ? '• Consider adding a role: "You are a [expert]..."\n' : ''}${!promptContext.toLowerCase().includes('format') && !promptContext.toLowerCase().includes('list') ? '• Specify an output format (list, paragraph, JSON, etc.)\n' : ''}\nWould you like help refining a specific part?`;
+  }
+
+  return `Great question! Here are some general prompt engineering tips:\n\n1. **Be specific** – Vague prompts get vague answers.\n2. **Assign a role** – "You are a [expert]" improves quality.\n3. **Set the format** – Tell the AI how to structure its response.\n4. **Add constraints** – Length, tone, audience all matter.\n5. **Iterate** – Treat prompts like code: refine and test.\n\nWhat aspect of your prompt would you like to improve?`;
 }
