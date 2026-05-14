@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { MessageSquare, Save, Trash2, Copy, Sparkles } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { MessageSquare, Save, Trash2, Sparkles, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import styles from './EditorPage.module.css';
 import PromptEditor from '@/components/editor/PromptEditor';
@@ -9,104 +9,107 @@ import ChatSidebar from '@/components/chat/ChatSidebar';
 import TagSelector from '@/components/tags/TagSelector';
 import { usePromptStore } from '@/hooks/usePromptStore';
 import { analyzePrompt } from '@/lib/feedbackEngine';
-import type { FeedbackIssue, Sensitivity } from '@/types';
+import type { FeedbackIssue, Preferences } from '@/types';
 
-function mapSensitivity(s: Sensitivity): 'standard' | 'strict' | 'gentle' {
+function normalizeSensitivity(s: Preferences['sensitivity']): 'strict' | 'standard' | 'gentle' {
+  if (s === 'gentle') return 'gentle';
   if (s === 'strict') return 'strict';
-  if (s === 'lenient' || s === 'gentle') return 'gentle';
   return 'standard';
 }
 
 export default function EditorPage() {
-  const { id } = useParams();
+  const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const store = usePromptStore();
-  const { preferences } = store;
 
-  const existing = id ? store.getPrompt(id) : undefined;
-  const [promptId, setPromptId] = useState<string | null>(existing?.id ?? null);
-  const [title, setTitle] = useState<string>(existing?.title ?? 'Untitled prompt');
-  const [content, setContent] = useState<string>(existing?.content ?? '');
+  const [activePromptId, setActivePromptId] = useState<string | null>(null);
+  const [title, setTitle] = useState<string>('');
+  const [content, setContent] = useState<string>('');
   const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState<boolean>(false);
 
-  const didInit = useRef<boolean>(false);
-
-  // Create a draft prompt on first load if none exists
+  // Resolve or create a prompt for this route
   useEffect(() => {
-    if (didInit.current) return;
-    didInit.current = true;
-    if (!existing && !promptId) {
-      const p = store.createPrompt({ title, content });
-      setPromptId(p.id);
-      navigate(`/dashboard/editor/${p.id}`, { replace: true });
+    if (id) {
+      const existing = store.getPrompt(id);
+      if (existing) {
+        setActivePromptId(existing.id);
+        setTitle(existing.title);
+        setContent(existing.content);
+        return;
+      }
+      // unknown id -> create new and redirect
     }
-  }, [existing, promptId, store, title, content, navigate]);
+    const created = store.createPrompt();
+    setActivePromptId(created.id);
+    setTitle(created.title);
+    setContent(created.content);
+    navigate(`/dashboard/editor/${created.id}`, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-  // Persist edits
+  // Persist edits (title/content) with light debounce via effect
   useEffect(() => {
-    if (!promptId) return;
+    if (!activePromptId) return;
     const t = setTimeout(() => {
-      store.updatePrompt(promptId, { title, content });
+      store.updatePrompt(activePromptId, { title: title || 'Untitled prompt', content });
     }, 250);
     return () => clearTimeout(t);
-  }, [promptId, title, content, store]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePromptId, title, content]);
+
+  const sensitivity = normalizeSensitivity(store.preferences.sensitivity);
 
   const issues: FeedbackIssue[] = useMemo(
-    () => analyzePrompt(content, preferences.useCase, mapSensitivity(preferences.sensitivity)),
-    [content, preferences.useCase, preferences.sensitivity]
+    () => analyzePrompt(content, { sensitivity, useCase: store.preferences.useCase }),
+    [content, sensitivity, store.preferences.useCase]
   );
 
-  const currentPrompt = promptId ? store.getPrompt(promptId) : undefined;
-  const tagIds = currentPrompt?.tagIds ?? [];
-
-  const applyFix = (issue: FeedbackIssue) => {
-    const anyIssue = issue as FeedbackIssue & { replacement?: string | null; appendText?: string };
-
-    if (anyIssue.replacement != null) {
-      const start = Math.max(0, Math.min(issue.startIndex, content.length));
-      const end = Math.max(start, Math.min(issue.endIndex, content.length));
-      const next = content.slice(0, start) + anyIssue.replacement + content.slice(end);
-      setContent(next);
-      toast.success('Fix applied');
-      return;
+  const handleApplyFix = (issue: FeedbackIssue) => {
+    // Replace the highlighted range with the suggestion if it contains a concrete replacement,
+    // otherwise append the suggestion to the end of the prompt.
+    const before = content.slice(0, issue.startIndex);
+    const after = content.slice(issue.endIndex);
+    let next: string;
+    if (issue.replacement && issue.replacement.length > 0) {
+      next = before + issue.replacement + after;
+    } else {
+      const sep = content.endsWith('\n') || content.length === 0 ? '' : '\n\n';
+      next = content + sep + issue.suggestion;
     }
-    if (anyIssue.appendText) {
-      const sep = content.length > 0 && !content.endsWith('\n') ? '\n\n' : '';
-      setContent(content + sep + anyIssue.appendText);
-      toast.success('Suggestion appended');
-      return;
-    }
-    // Fallback: append the suggestion text
-    const sep = content.length > 0 && !content.endsWith('\n') ? '\n\n' : '';
-    setContent(content + sep + issue.suggestion);
-    toast.success('Suggestion appended');
+    setContent(next);
+    toast.success('Fix applied');
   };
 
-  const copyAll = () => {
-    navigator.clipboard.writeText(content).then(
-      () => toast.success('Prompt copied'),
-      () => toast.error('Could not copy')
-    );
-  };
-
-  const clearAll = () => {
+  const handleClear = () => {
     setContent('');
-    toast.message('Cleared');
+    toast('Prompt cleared');
   };
 
-  const deletePrompt = () => {
-    if (!promptId) return;
-    if (!confirm('Delete this prompt?')) return;
-    store.deletePrompt(promptId);
+  const handleDelete = () => {
+    if (!activePromptId) return;
+    store.deletePrompt(activePromptId);
+    toast.success('Prompt deleted');
     navigate('/dashboard/library');
   };
+
+  const handleSave = () => {
+    if (!activePromptId) return;
+    store.updatePrompt(activePromptId, { title: title || 'Untitled prompt', content });
+    toast.success('Saved');
+  };
+
+  const prompt = activePromptId ? store.getPrompt(activePromptId) : undefined;
 
   return (
     <div className={styles.page}>
       <div className={styles.workspace}>
-        <div className={styles.center}>
-          <header className={styles.headerRow}>
+        <div className={styles.main}>
+          <div className={styles.header}>
+            <button className={styles.backBtn} onClick={() => navigate('/dashboard/library')} title="Back to library">
+              <ChevronLeft size={14} />
+              <span>Library</span>
+            </button>
             <input
               className={styles.titleInput}
               value={title}
@@ -114,64 +117,65 @@ export default function EditorPage() {
               placeholder="Untitled prompt"
             />
             <div className={styles.headerActions}>
-              <button className={styles.iconBtn} onClick={copyAll} title="Copy">
-                <Copy size={14} />
+              <button className={styles.iconBtn} onClick={handleSave} title="Save">
+                <Save size={14} />
               </button>
-              <button className={styles.iconBtn} onClick={clearAll} title="Clear">
+              <button className={styles.iconBtn} onClick={handleClear} title="Clear">
                 <Trash2 size={14} />
               </button>
-              {promptId && (
-                <button className={styles.iconBtn} onClick={deletePrompt} title="Delete prompt">
-                  <Trash2 size={14} />
-                </button>
-              )}
               <button
                 className={styles.chatBtn}
-                onClick={() => setChatOpen((c) => !c)}
-                title="Toggle chat"
+                onClick={() => setChatOpen((o) => !o)}
+                title="Toggle chat coach"
               >
                 <MessageSquare size={14} />
-                <span>{chatOpen ? 'Hide chat' : 'Open chat'}</span>
+                <span>{chatOpen ? 'Hide chat' : 'Chat coach'}</span>
               </button>
             </div>
-          </header>
+          </div>
 
-          {promptId && (
-            <div className={styles.tagsRow}>
-              <TagSelector promptId={promptId} tagIds={tagIds} />
+          {prompt && (
+            <div className={styles.tagRow}>
+              <TagSelector promptId={prompt.id} tagIds={prompt.tagIds} />
             </div>
           )}
 
-          <PromptEditor
-            value={content}
-            onChange={setContent}
-            issues={issues}
-            activeIssueId={activeIssueId}
-            onHoverIssue={setActiveIssueId}
-            onApplyFix={applyFix}
-          />
+          <div className={styles.editorWrap}>
+            <PromptEditor
+              value={content}
+              onChange={setContent}
+              issues={issues}
+              activeIssueId={activeIssueId}
+              onHoverIssue={setActiveIssueId}
+              onApplyFix={handleApplyFix}
+            />
+          </div>
 
           <div className={styles.issuesWrap}>
             <IssuesPanel
               issues={issues}
               activeIssueId={activeIssueId}
               onSelectIssue={setActiveIssueId}
-              onClear={clearAll}
-              onApplyFix={applyFix}
+              onClear={handleClear}
+              onApplyFix={handleApplyFix}
             />
           </div>
 
-          <div className={styles.footHint}>
-            <Sparkles size={12} />
-            <span>Tip: hover any highlight to see the explanation and a one-click fix.</span>
-            <Save size={12} style={{ marginLeft: 'auto' }} />
-            <span>Saved locally</span>
+          <div className={styles.footerRow}>
+            <div className={styles.footerHint}>
+              <Sparkles size={12} />
+              <span>Tip: hover a highlight in the editor to see the suggested fix.</span>
+            </div>
+            <button className={styles.dangerBtn} onClick={handleDelete} title="Delete prompt">
+              <Trash2 size={13} />
+              <span>Delete</span>
+            </button>
           </div>
         </div>
 
-        {chatOpen && promptId && (
+        {chatOpen && activePromptId && (
           <ChatSidebar
-            promptId={promptId}
+            promptId={activePromptId}
             promptContext={content}
             onClose={() => setChatOpen(false)}
           />
