@@ -1,17 +1,17 @@
+export type UseCase = 'chat' | 'system' | 'both';
+export type Sensitivity = 'lenient' | 'standard' | 'strict';
 export type IssueType = 'vague' | 'missing' | 'improvement';
 
 export type FeedbackIssue = {
   id: string;
+  ruleId: string;
   type: IssueType;
-  startIndex: number;
-  endIndex: number;
   shortLabel: string;
   explanation: string;
   suggestion: string;
-  /** If set, applying the fix replaces the highlighted range with this text */
-  replacement?: string;
-  /** If set, applying the fix appends this text to the end of the prompt */
-  appendText?: string;
+  matchedText: string;
+  startIndex: number;
+  endIndex: number;
 };
 
 export type Prompt = {
@@ -44,11 +44,17 @@ export type ChatMessage = {
   createdAt: number;
 };
 
-export type UseCase = 'work' | 'personal' | 'both';
-export type Sensitivity = 'gentle' | 'standard' | 'strict';
-
 export type Preferences = {
   useCase: UseCase;
   sensitivity: Sensitivity;
   displayName: string;
+};
+
+export type FeedbackRule = {
+  id: string;
+  type: IssueType;
+  shortLabel: string;
+  explanation: string;
+  suggestion: string;
+  appliesTo: UseCase[];
 };
