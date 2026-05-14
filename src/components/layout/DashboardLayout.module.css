@@ -1,0 +1,87 @@
+.shell {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-elev);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.18s ease;
+}
+.collapsed { width: 64px; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), #b794ff);
+  display: grid; place-items: center;
+  color: white;
+  flex-shrink: 0;
+}
+.brandName { font-weight: 600; font-size: 15px; }
+
+.nav { padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.navItem {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  transition: background 0.12s, color 0.12s;
+}
+.navItem:hover { background: var(--bg-elev-2); color: var(--text); }
+.navItemActive { background: var(--accent-soft); color: var(--text); }
+
+.sidebarFoot {
+  padding: 10px 8px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.iconButton {
+  display: flex; align-items: center; gap: 8px;
+  background: transparent; border: 0;
+  color: var(--text-muted);
+  padding: 8px 10px; border-radius: 8px;
+  font-size: 13px;
+}
+.iconButton:hover { background: var(--bg-elev-2); color: var(--text); }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.topbar {
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 18px;
+  background: var(--bg);
+}
+.topbarLeft, .topbarRight { display: flex; align-items: center; gap: 12px; }
+.topbarHint { color: var(--text-dim); font-size: 12.5px; }
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, #5a4ad1, #b794ff);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 600; color: white;
+}
+.logout {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid var(--border);
+  padding: 6px 10px; border-radius: 8px;
+  color: var(--text-muted); font-size: 12.5px;
+}
+.logout:hover { color: var(--text); border-color: var(--border-strong); }
+
+.content { flex: 1; overflow: hidden; min-height: 0; }

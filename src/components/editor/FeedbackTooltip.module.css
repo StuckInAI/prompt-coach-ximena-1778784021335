@@ -1,0 +1,47 @@
+.tooltip {
+  position: fixed;
+  z-index: 100;
+  width: 320px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+.header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.badge {
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.badge[data-type='vague'] { background: rgba(246, 169, 59, 0.18); color: var(--warning); }
+.badge[data-type='missing'] { background: rgba(239, 68, 68, 0.18); color: var(--danger); }
+.badge[data-type='improvement'] { background: rgba(59, 130, 246, 0.18); color: var(--info); }
+.label { font-size: 13px; font-weight: 600; }
+.body { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px; }
+.suggestion {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.suggestionTitle { font-size: 10.5px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; letter-spacing: 0.04em; }
+.suggestionText { font-size: 12.5px; color: var(--text); line-height: 1.5; }
+.actions { display: flex; gap: 6px; justify-content: flex-end; }
+.actionBtn, .actionPrimary {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-muted);
+}
+.actionBtn:hover { color: var(--text); }
+.actionPrimary { background: var(--accent); border-color: var(--accent); color: white; }
+.actionPrimary:hover { background: var(--accent-hover); }
