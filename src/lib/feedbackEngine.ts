@@ -1,103 +1,176 @@
-export type IssueType = 'vague' | 'missing' | 'improvement';
+import type { FeedbackIssue } from '@/types';
+import { nanoid } from '@/lib/id';
 
-export interface FeedbackIssue {
-  id: string;
-  startIndex: number;
-  endIndex: number;
-  type: IssueType;
-  shortLabel: string;
-  explanation: string;
-  suggestion: string;
-}
+// ── Feedback analysis ────────────────────────────────────────────────────────
 
-interface Rule {
-  pattern: RegExp;
-  type: IssueType;
-  shortLabel: string;
-  explanation: (match: string) => string;
-  suggestion: (match: string) => string;
-}
-
-const RULES: Rule[] = [
+const VAGUE_PATTERNS: { re: RegExp; label: string; explanation: string; suggestion: string }[] = [
   {
-    pattern: /\b(something|stuff|things|whatever|anything)\b/gi,
-    type: 'vague',
-    shortLabel: 'Vague noun',
-    explanation: (m) => `"${m}" is too vague for an AI to act on. Specify exactly what you mean.`,
-    suggestion: (m) => `Replace "${m}" with a concrete noun or phrase.`,
+    re: /\b(stuff|things|something|anything|whatever|somehow|somewhere|etc)\b/gi,
+    label: 'Vague term',
+    explanation: 'This word is too ambiguous. Be specific about what you mean.',
+    suggestion: 'Replace with a concrete noun or description.',
   },
   {
-    pattern: /\b(good|nice|great|awesome|amazing|bad|cool)\b/gi,
-    type: 'vague',
-    shortLabel: 'Vague adjective',
-    explanation: (m) => `"${m}" is subjective — the AI won't know your standard. Use specific criteria.`,
-    suggestion: (m) => `Replace "${m}" with a measurable quality, e.g. "concise", "professional", "under 100 words".`,
+    re: /\b(good|bad|nice|great|awesome|cool|interesting|important)\b/gi,
+    label: 'Weak adjective',
+    explanation: 'Subjective adjectives add little signal. Use measurable or descriptive language.',
+    suggestion: 'Specify what quality you actually want (e.g. "concise", "data-driven", "under 100 words").',
   },
   {
-    pattern: /\b(write|create|make|build|generate)\b(?!.*\b(tone|format|length|audience|style|goal)\b)/gi,
-    type: 'missing',
-    shortLabel: 'Missing context',
-    explanation: () => 'This action verb appears without specifying tone, format, length, or audience. AI needs these details.',
-    suggestion: () => 'Add: target audience, desired tone, output format, and approximate length.',
-  },
-  {
-    pattern: /\b(short|long|brief|detailed|quick)\b/gi,
-    type: 'improvement',
-    shortLabel: 'Imprecise length',
-    explanation: (m) => `"${m}" is relative. Specify an exact word count or number of sentences.`,
-    suggestion: (m) => `Replace "${m}" with e.g. "under 100 words" or "3 bullet points".`,
-  },
-  {
-    pattern: /\b(my audience|my users|my customers|our users|our customers)\b/gi,
-    type: 'improvement',
-    shortLabel: 'Undefined audience',
-    explanation: () => 'The audience is referenced but not described. Who are they exactly?',
-    suggestion: () => 'Add a brief description: e.g. "busy startup founders with no technical background".',
-  },
-  {
-    pattern: /\b(asap|soon|quickly|fast)\b/gi,
-    type: 'vague',
-    shortLabel: 'Vague urgency',
-    explanation: (m) => `"${m}" is not actionable for an AI. Remove or replace with a concrete constraint.`,
-    suggestion: () => 'Remove or clarify the time constraint — it has no meaning for an AI model.',
-  },
-  {
-    pattern: /^(?!.*\b(tone|voice|style)\b).{80,}$/gim,
-    type: 'improvement',
-    shortLabel: 'No tone specified',
-    explanation: () => 'Longer prompts often benefit from explicitly stating the desired tone or voice.',
-    suggestion: () => 'Add a tone directive, e.g. "Use a professional, conversational tone."',
+    re: /\b(a lot|many|some|few|several|various|numerous)\b/gi,
+    label: 'Vague quantity',
+    explanation: 'Quantify exactly what you need for a more precise result.',
+    suggestion: 'Use a specific number or range (e.g. "3 examples", "fewer than 5 bullets").',
   },
 ];
 
-export function analyzeFeedback(text: string, sensitivity: 'standard' | 'strict' = 'standard'): FeedbackIssue[] {
-  const issues: FeedbackIssue[] = [];
-  const seenRanges: [number, number][] = [];
+const MISSING_PATTERNS: { re: RegExp; label: string; explanation: string; suggestion: string }[] = [
+  {
+    re: /\b(asap|urgently|quickly|fast|soon)\b/gi,
+    label: 'Missing deadline',
+    explanation: 'Time references without context are hard to interpret.',
+    suggestion: 'State the actual deadline or time constraint.',
+  },
+];
 
-  for (const rule of RULES) {
-    const re = new RegExp(rule.pattern.source, rule.pattern.flags);
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(text)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      // Skip overlapping ranges
-      if (seenRanges.some(([s, e]) => start < e && end > s)) continue;
-      // In standard mode skip the "no tone" rule for short texts
-      if (sensitivity === 'standard' && rule.shortLabel === 'No tone specified' && text.length < 120) continue;
-      seenRanges.push([start, end]);
-      issues.push({
-        id: `issue-${start}-${end}-${rule.type}`,
-        startIndex: start,
-        endIndex: end,
-        type: rule.type,
-        shortLabel: rule.shortLabel,
-        explanation: rule.explanation(match[0]),
-        suggestion: rule.suggestion(match[0]),
-      });
-      if (issues.length >= 8) break;
+const IMPROVEMENT_PATTERNS: { re: RegExp; label: string; explanation: string; suggestion: string }[] = [
+  {
+    re: /\b(write|create|make|generate|produce|give me|provide)\b/gi,
+    label: 'Add output format',
+    explanation: 'Specifying the output format helps the model structure its response.',
+    suggestion: 'Add "in a numbered list", "as a JSON object", or "in Markdown" to your request.',
+  },
+  {
+    re: /\b(user|reader|audience|customer|client|people)\b/gi,
+    label: 'Specify audience',
+    explanation: 'Naming the exact audience helps calibrate tone and complexity.',
+    suggestion: 'Describe the audience more precisely (e.g. "senior software engineers", "first-time home buyers").',
+  },
+];
+
+export function analyzeFeedback(text: string): FeedbackIssue[] {
+  const issues: FeedbackIssue[] = [];
+  const used = new Set<number>(); // track used character positions to avoid overlaps
+
+  const tryAdd = (
+    type: FeedbackIssue['type'],
+    match: RegExpExecArray,
+    label: string,
+    explanation: string,
+    suggestion: string
+  ) => {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    for (let i = start; i < end; i++) {
+      if (used.has(i)) return;
     }
-    if (issues.length >= 8) break;
+    for (let i = start; i < end; i++) used.add(i);
+    issues.push({
+      id: nanoid(),
+      type,
+      shortLabel: label,
+      explanation,
+      suggestion,
+      startIndex: start,
+      endIndex: end,
+    });
+  };
+
+  for (const p of VAGUE_PATTERNS) {
+    p.re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = p.re.exec(text)) !== null) {
+      tryAdd('vague', m, p.label, p.explanation, p.suggestion);
+    }
+  }
+  for (const p of MISSING_PATTERNS) {
+    p.re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = p.re.exec(text)) !== null) {
+      tryAdd('missing', m, p.label, p.explanation, p.suggestion);
+    }
+  }
+  for (const p of IMPROVEMENT_PATTERNS) {
+    p.re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = p.re.exec(text)) !== null) {
+      tryAdd('improvement', m, p.label, p.explanation, p.suggestion);
+    }
   }
 
-  return issues.sort((a, b) => a.startIndex - b.startIndex);
+  return issues;
+}
+
+// ── Chat reply generator ──────────────────────────────────────────────────────
+
+const CHAT_RULES: { re: RegExp; reply: (ctx: string) => string }[] = [
+  {
+    re: /improve|better|fix|enhance/i,
+    reply: (ctx) =>
+      ctx.length > 20
+        ? `To improve this prompt, try adding:\n• A clear role ("You are a …")
+• The desired output format
+• Audience details\n\nYour current prompt: "${ctx.slice(0, 80)}…"`
+        : 'Add a role, output format, and audience to make your prompt more effective.',
+  },
+  {
+    re: /role|persona/i,
+    reply: () =>
+      'Assigning a role focuses the model. Try starting with "You are an expert [X]" before your actual request.',
+  },
+  {
+    re: /example|sample|show me/i,
+    reply: (ctx) =>
+      ctx.length > 10
+        ? `Here's a stronger version:\n\n"You are an expert copywriter. Write a 3-bullet summary of [${ctx.slice(0, 40)}] for a non-technical audience. Use plain English and avoid jargon."`
+        : 'Try: "You are a [role]. [Task] for [audience]. Format: [bullets/JSON/paragraph]."',
+  },
+  {
+    re: /format|structure|output/i,
+    reply: () =>
+      'Output format tips:\n• "Respond in JSON with keys: title, summary, tags"
+• "Use a numbered list"
+• "Write in Markdown with headers"',
+  },
+  {
+    re: /vague|unclear|specific/i,
+    reply: () =>
+      'Replace vague words (stuff, things, good) with concrete terms. Instead of "write something good" try "write a 150-word product description with a CTA button label".',
+  },
+  {
+    re: /missing|what else|lack/i,
+    reply: () =>
+      'Common missing elements:\n1. Role / persona\n2. Audience\n3. Tone\n4. Length constraint\n5. Output format',
+  },
+  {
+    re: /tone|voice|style/i,
+    reply: () =>
+      'Tone keywords to add: professional, casual, empathetic, concise, technical, conversational, witty.',
+  },
+  {
+    re: /length|word|short|long/i,
+    reply: () =>
+      'Add a length constraint: "under 100 words", "exactly 3 paragraphs", or "no more than 5 bullet points".',
+  },
+];
+
+const FALLBACK_REPLIES = [
+  'Great question! Share more about what you\'re trying to achieve and I\'ll give specific advice.',
+  'Tip: the best prompts have a role, a task, an audience, and an output format.',
+  'Try adding "Step-by-step, " at the start to get more structured responses from the model.',
+  'Context is king. The more background you provide, the better the model performs.',
+  'Consider adding constraints — length, tone, format — to narrow the output to exactly what you need.',
+];
+
+let fallbackIdx = 0;
+
+export function generateChatReply(userMessage: string, promptContext: string): string {
+  for (const rule of CHAT_RULES) {
+    if (rule.re.test(userMessage)) {
+      return rule.reply(promptContext);
+    }
+  }
+  const reply = FALLBACK_REPLIES[fallbackIdx % FALLBACK_REPLIES.length];
+  fallbackIdx++;
+  return reply;
 }
